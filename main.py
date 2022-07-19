@@ -45,11 +45,11 @@ def showImg(img):
     cv.destroyAllWindows()
 
 def showCameraParameters():
-    print("Intrinsic Matrix (K) =\n", K)
-    print("R1 =\n", R1)
-    print("t1 =\n", t1)
-    print("R2 =\n", R2)
-    print("t2 =\n", t2)
+    print("Intrinsic Matrix (K) =\n", K,"\n")
+    print("R1 =\n", R1,"\n")
+    print("t1 =\n", t1,"\n")
+    print("R2 =\n", R2,"\n")
+    print("t2 =\n", t2,"\n")
     print("")
 
 def segmentFace(img):
@@ -102,7 +102,7 @@ def getRecktified(img1, img2):
     pts2 = []
 
     for i, (m, n) in enumerate(matches):
-        if m.distance < 0.2*n.distance:
+        if m.distance < 0.4*n.distance:
             matchesMask[i] = [1, 0]
             good.append(m)
             pts2.append(kp2[m.trainIdx].pt)
@@ -126,7 +126,18 @@ if __name__ == "__main__":
     showCameraParameters()
 
     logging.info("Starting Face Segementation from Background:")
-    seg1, seg2 = getSegmentedImgs()
+
+    seg1 = cv.imread("Files/Segmented1.png", 1)
+    seg2 = cv.imread("Files/Segmented2.png", 1)
+
+    try:
+        if seg1 == None or seg2 == None:
+            logging.warning("No Saved Images Found. Will continue segmentation process.")
+            logging.warning("This will take a long time.")
+            seg1, seg2 = getSegmentedImgs()
+    except ValueError:
+        logging.info("FOUND SAVED SEGEMENTED IMAGES! Skipping Segementation")
+        
     logging.info("Segmentation Done!\n")
     # showImg(seg1)
     # showImg(scale(seg1, 0.3, 0.3))
