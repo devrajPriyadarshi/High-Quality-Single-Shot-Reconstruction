@@ -1,4 +1,5 @@
 import logging
+from math import log
 import numpy as np
 from numpy.linalg import inv
 import cv2 as cv
@@ -112,14 +113,9 @@ def segmentSkin(img1, img2):
     showImg(scale(seg2, 0.3, 0.3))
 
 def drawlines(img1src, img2src, lines, pts1src, pts2src):
-    ''' img1 - image on which we draw the epilines for the points in img2
-        lines - corresponding epilines '''
     r, c, h = img1src.shape
-    # img1color = cv.cvtColor(img1src, cv.COLOR_GRAY2BGR)
-    # img2color = cv.cvtColor(img2src, cv.COLOR_GRAY2BGR)
     img1color = img1src
     img2color = img2src
-    # Edit: use the same random seed so that two images are comparable!
     np.random.seed(0)
     for r, pt1, pt2 in zip(lines, pts1src, pts2src):
         color = tuple(np.random.randint(0, 255, 3).tolist())
@@ -132,7 +128,6 @@ def drawlines(img1src, img2src, lines, pts1src, pts2src):
 
 def getRecktified(img1, img2):
     sift = cv.SIFT_create()
-    # find the keypoints and descriptors with SIFT
     kp1, des1 = sift.detectAndCompute(img1, None)
     kp2, des2 = sift.detectAndCompute(img2, None)
     # imgSift = cv.drawKeypoints(img1, kp1, None, flags=cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
@@ -157,12 +152,12 @@ def getRecktified(img1, img2):
             pts2.append(kp2[m.trainIdx].pt)
             pts1.append(kp1[m.queryIdx].pt)
     
-    draw_params = dict( matchColor=(0, 255, 0),
-                        singlePointColor=(255, 0, 0),
-                        matchesMask=matchesMask[:],
-                        flags=cv.DrawMatchesFlags_DEFAULT)
+    # draw_params = dict( matchColor=(0, 255, 0),
+                        # singlePointColor=(255, 0, 0),
+                        # matchesMask=matchesMask[:],
+                        # flags=cv.DrawMatchesFlags_DEFAULT)
 
-    keypoint_matches = cv.drawMatchesKnn( img1, kp1, img2, kp2, matches[:], None, **draw_params)
+    # keypoint_matches = cv.drawMatchesKnn( img1, kp1, img2, kp2, matches[:], None, **draw_params)
     # showImg(scale(keypoint_matches, 0.2, 0.2))
 
     pts1 = np.int32(pts1)
@@ -173,17 +168,17 @@ def getRecktified(img1, img2):
     pts1 = pts1[inliers.ravel() == 1]
     pts2 = pts2[inliers.ravel() == 1]
 
-    lines1 = cv.computeCorrespondEpilines(
-    pts2.reshape(-1, 1, 2), 2, fundamental_matrix)
-    lines1 = lines1.reshape(-1, 3)
-    img5, img6 = drawlines(img1, img2, lines1, pts1, pts2)
+    # lines1 = cv.computeCorrespondEpilines(
+    # pts2.reshape(-1, 1, 2), 2, fundamental_matrix)
+    # lines1 = lines1.reshape(-1, 3)
+    # img5, img6 = drawlines(img1, img2, lines1, pts1, pts2)
 
-    # Find epilines corresponding to points in left image (first image) and
-    # drawing its lines on right image
-    lines2 = cv.computeCorrespondEpilines(
-        pts1.reshape(-1, 1, 2), 1, fundamental_matrix)
-    lines2 = lines2.reshape(-1, 3)
-    img3, img4 = drawlines(img2, img1, lines2, pts2, pts1)
+    # # Find epilines corresponding to points in left image (first image) and
+    # # drawing its lines on right image
+    # lines2 = cv.computeCorrespondEpilines(
+    #     pts1.reshape(-1, 1, 2), 1, fundamental_matrix)
+    # lines2 = lines2.reshape(-1, 3)
+    # img3, img4 = drawlines(img2, img1, lines2, pts2, pts1)
 
     # plt.subplot(211), plt.imshow(img5)
     # plt.subplot(212), plt.imshow(img3)
@@ -192,9 +187,7 @@ def getRecktified(img1, img2):
 
     h1, w1, c1 = img1.shape
     h2, w2, c2 = img2.shape
-    _, H1, H2 = cv.stereoRectifyUncalibrated(
-        np.float32(pts1), np.float32(pts2), fundamental_matrix, imgSize=(w1, h1)
-    )
+    _, H1, H2 = cv.stereoRectifyUncalibrated (np.float32(pts1), np.float32(pts2), fundamental_matrix, imgSize=(w1, h1))
     img1_rectified = cv.warpPerspective(img1, H1, (w1, h1))
     img2_rectified = cv.warpPerspective(img2, H2, (w2, h2))
     cv.imwrite("Files/rectified_1.png", img1_rectified)
@@ -203,7 +196,15 @@ def getRecktified(img1, img2):
     # showImg(scale(img2_rectified, 0.3, 0.3))
     return img1_rectified, img2_rectified
 
+def subsample(img1, img2):
+    rows, cols, _channels = img1.shape
+
+    subImg1 = cv.pyrDown(img1,dstsize=(cols//2, rows//2))
+    subImg2 = cv.pyrDown(img2,dstsize=(cols//2, rows//2))
     
+    return subImg1, subImg2
+    # showImg(img1)
+
 
 if __name__ == "__main__":
 
@@ -228,7 +229,30 @@ if __name__ == "__main__":
 
     """START RECTIFICATION"""
     logging.info("Starting Rectification!")
-    rect1, rect2 = getRecktified(seg1, seg2)
+    rect1 = cv.imread("Files/rectified_1.png", 1)
+    rect2 = cv.imread("Files/rectified_2.png", 1)
+    try:
+        if rect1 == None or rect2 == None:
+            logging.warning("No Saved Images Found. Will continue Rectification process.")
+            logging.warning("This will take not much time.")
+            rect1, rect2 = getRecktified(seg1, seg2)
+    except ValueError:
+        logging.info("FOUND SAVED RECTIFIED IMAGES! Skipping Rectification")
     logging.info("Rectification Done!\n")
+
+    """START BUILDING A IMAGE PYRAMID"""
+    logging.info("Process Image Pyramid!")
+    pyramidImg1 = [rect1]
+    pyramidImg2 = [rect2]
+    for i in range( int(log(rect1.shape[0]/150, 2))):
+        sub1, sub2 = subsample(pyramidImg1[0], pyramidImg2[0])
+        pyramidImg1 = [sub1] + pyramidImg1
+        pyramidImg2 = [sub2] + pyramidImg2
+
+    # for x in pyramidImg2:
+    #     showImg(x)
+    logging.info("Image Pyramid Made!")
+
+    logging.info("Calculate Disparity Map at each level!")
 
     
